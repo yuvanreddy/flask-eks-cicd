@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: flask-app
+  namespace: default
 spec:
   replicas: 3
   selector:
@@ -14,7 +15,8 @@ spec:
     spec:
       containers:
       - name: flask
-        image: ECR_IMAGE:IMAGE_TAG
+        image: 816069153839.dkr.ecr.us-east-1.amazonaws.com/myrepo_flask:IMAGE_TAG
+        imagePullPolicy: Always
         ports:
         - containerPort: 5000
         env:
@@ -24,3 +26,5 @@ spec:
           httpGet:
             path: /health
             port: 5000
+          initialDelaySeconds: 5
+          periodSeconds: 10
