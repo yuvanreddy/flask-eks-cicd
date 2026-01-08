@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flask-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: flask
+  template:
+    metadata:
+      labels:
+        app: flask
+    spec:
+      containers:
+      - name: flask
+        image: ECR_IMAGE:IMAGE_TAG
+        ports:
+        - containerPort: 5000
+        env:
+        - name: APP_VERSION
+          value: "v1"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5000
