@@ -3,25 +3,14 @@ pipeline {
   
   // ✅ GitHub Webhook Trigger Configuration
   triggers {
-    // Primary: GitHub webhook trigger (real-time)
     githubPush()
-    
-    // Backup: Poll SCM every 15 minutes (in case webhook fails)
     pollSCM('H/15 * * * *')
   }
   
-  // ✅ Pipeline Options
   options {
-    // Keep only last 10 builds to save space
     buildDiscarder(logRotator(numToKeepStr: '10'))
-    
-    // Timeout if pipeline takes more than 30 minutes
     timeout(time: 30, unit: 'MINUTES')
-    
-    // Disable concurrent builds
     disableConcurrentBuilds()
-    
-    // Add timestamps to console output
     timestamps()
   }
   
@@ -43,16 +32,9 @@ pipeline {
         script {
           echo "🔄 Checking out code from GitHub..."
         }
-        // Using 'checkout scm' is better than hardcoding git URL
-        // It automatically uses the repo configured in Jenkins job
         checkout scm
-        
-        // Alternative: If you want to keep explicit git command
-        // git branch: 'main', url: 'https://github.com/yuvanreddy/flask-eks-cicd.git'
-        
         script {
           echo "✅ Code checked out successfully"
-          // Show last commit info
           sh 'git log -1 --oneline'
         }
       }
@@ -97,7 +79,6 @@ pipeline {
           docker tag ${ECR_REPO}:${IMAGE_TAG} ${ECR_URI}:${IMAGE_TAG}
           docker push ${ECR_URI}:${IMAGE_TAG}
           
-          # Also tag as 'latest' for convenience
           docker tag ${ECR_REPO}:${IMAGE_TAG} ${ECR_URI}:latest
           docker push ${ECR_URI}:latest
         '''
@@ -142,16 +123,9 @@ pipeline {
           echo "🚀 Deploying to EKS with image tag: ${IMAGE_TAG}"
         }
         sh '''
-          # Create backup of deployment file
           cp k8s/deployment.yaml k8s/deployment.yaml.bak
-          
-          # Replace IMAGE_TAG placeholder with actual build number
           sed -i "s|IMAGE_TAG|${IMAGE_TAG}|g" k8s/deployment.yaml
-          
-          # Apply all Kubernetes manifests
           kubectl apply -f k8s/ --validate=false
-          
-          # Restore original deployment file
           mv k8s/deployment.yaml.bak k8s/deployment.yaml
         '''
         script {
@@ -166,7 +140,6 @@ pipeline {
           echo "⏳ Waiting for deployment to complete..."
         }
         sh '''
-          # Wait for deployment to finish rolling out
           kubectl rollout status deployment/flask-deployment --timeout=5m
         '''
         script {
@@ -203,7 +176,6 @@ pipeline {
           echo "    FETCHING LOADBALANCER URL"
           echo "======================================"
           
-          # Wait for LoadBalancer URL (max 5 minutes)
           for i in {1..30}; do
             URL=$(kubectl get svc flask-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
             if [ ! -z "$URL" ]; then
@@ -223,16 +195,13 @@ pipeline {
           
           echo ""
           echo "⚠️ LoadBalancer URL not assigned yet."
-          echo "This is normal for new services. Check again in 2-3 minutes:"
-          echo ""
-          echo "  kubectl get svc flask-service"
+          echo "Check again in 2-3 minutes: kubectl get svc flask-service"
           echo ""
         '''
       }
     }
   }
   
-  // ✅ Post-build Actions
   post {
     success {
       script {
@@ -243,8 +212,6 @@ pipeline {
         echo "Image: ${ECR_URI}:${IMAGE_TAG}"
         echo ""
       }
-      
-      // Optional: Clean up old Docker images to save space
       sh '''
         echo "🧹 Cleaning up old Docker images..."
         docker image prune -af --filter "until=24h" || true
@@ -266,22 +233,10 @@ pipeline {
       script {
         echo ""
         echo "======================================"
-        echo "Pipeline execution completed at: ${new Date()}"
+        echo "Pipeline execution completed"
         echo "Build URL: ${BUILD_URL}"
         echo "======================================"
       }
-      
-      // Optional: Send notifications (uncomment if you set up email/Slack)
-      // emailext (
-      //   subject: "Jenkins Build ${currentBuild.result}: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-      //   body: "Check console output at: ${env.BUILD_URL}",
-      //   to: "your-email@example.com"
-      // )
-    }
-    
-    cleanup {
-      // Clean up workspace after build (optional)
-      // cleanWs()
     }
   }
 }
