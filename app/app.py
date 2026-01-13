@@ -6,7 +6,7 @@ app = Flask(__name__)
 @app.route('/')
 def hello():
     return f"""
-    <h1>My Name is Yuvan Reddy Arepally S/o Rajavardhan Reddy</h1>
+    <h1>My Name is Yuvan Reddy Arepally S/o Rajavardhan Reddy /n And Deepthi </h1>
     <p>Pod: {socket.gethostname()}</p>
     <p>Version: {os.getenv('APP_VERSION','v1')}</p>
     """
