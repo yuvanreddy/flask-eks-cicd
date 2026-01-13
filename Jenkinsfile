@@ -1,22 +1,29 @@
 pipeline {
   agent any
+
   environment {
-    AWS_REGION        = "us-east-1"
-    CLUSTER_NAME      = "flask-eks"
-    AWS_ACCOUNT_ID    = "816069153839"
-    ECR_REPO          = "myrepo_flask"
-    IMAGE_TAG         = "${BUILD_NUMBER}"
-    ECR_URI           = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
-    KUBECONFIG        = "/var/lib/jenkins/.kube/config"
-    PATH              = "/usr/local/bin:/usr/bin:/bin"
-    AWS_DEFAULT_REGION= "us-east-1"
+    AWS_REGION         = "us-east-1"
+    CLUSTER_NAME       = "flask-eks"
+    AWS_ACCOUNT_ID     = "816069153839"
+    ECR_REPO           = "myrepo_flask"
+    IMAGE_TAG          = "${BUILD_NUMBER}"
+    ECR_URI            = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
+    KUBECONFIG         = "/var/lib/jenkins/.kube/config"
+    PATH               = "/usr/local/bin:/usr/bin:/bin"
+    AWS_DEFAULT_REGION = "us-east-1"
+
+    // ✅ ADD YOUR WEBHOOK URL HERE (Slack / Teams / Discord etc.)
+    WEBHOOK_URL        = "https://hooks.slack.com/services/XXXX/XXXX/XXXX"
   }
+
   stages {
+
     stage('Checkout') {
       steps {
         git branch: 'main', url: 'https://github.com/yuvanreddy/flask-eks-cicd.git'
       }
     }
+
     stage('Build Image') {
       steps {
         sh '''
@@ -24,6 +31,7 @@ pipeline {
         '''
       }
     }
+
     stage('Login to ECR') {
       steps {
         sh '''
@@ -33,6 +41,7 @@ pipeline {
         '''
       }
     }
+
     stage('Push Image') {
       steps {
         sh '''
@@ -41,6 +50,7 @@ pipeline {
         '''
       }
     }
+
     stage('Update kubeconfig') {
       steps {
         sh '''
@@ -49,6 +59,7 @@ pipeline {
         '''
       }
     }
+
     stage('Apply aws-auth RBAC') {
       steps {
         sh '''
@@ -56,6 +67,7 @@ pipeline {
         '''
       }
     }
+
     stage('Deploy to EKS') {
       steps {
         sh '''
@@ -64,26 +76,62 @@ pipeline {
         '''
       }
     }
+
     stage('Verify + Print URL') {
       steps {
         sh '''
           echo "=== PODS ==="
           kubectl get pods -o wide
+
           echo "=== SERVICE ==="
           kubectl get svc flask-service
+
           echo "Waiting for LoadBalancer URL..."
           for i in {1..30}; do
             URL=$(kubectl get svc flask-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
             if [ ! -z "$URL" ]; then
               echo "✅ Flask App URL: http://$URL"
+              echo "$URL" > lb_url.txt
               exit 0
             fi
             sleep 10
           done
+
           echo "❌ LoadBalancer URL not assigned yet. Check again after 2-3 mins:"
           kubectl get svc flask-service
         '''
       }
+    }
+
+    // ✅ NEW STAGE: WEBHOOK NOTIFICATION
+    stage('Webhook Notify') {
+      steps {
+        script {
+          def url = "Not Assigned"
+          if (fileExists('lb_url.txt')) {
+            url = sh(script: "cat lb_url.txt", returnStdout: true).trim()
+          }
+
+          sh """
+            curl -X POST -H 'Content-type: application/json' \
+            --data '{
+              "text": "✅ Jenkins Deployment SUCCESS\\nJob: ${JOB_NAME}\\nBuild: #${BUILD_NUMBER}\\nECR Image: ${ECR_URI}:${IMAGE_TAG}\\nApp URL: http://${url}"
+            }' ${WEBHOOK_URL}
+          """
+        }
+      }
+    }
+  }
+
+  // ✅ If build fails, it will send failure notification
+  post {
+    failure {
+      sh """
+        curl -X POST -H 'Content-type: application/json' \
+        --data '{
+          "text": "❌ Jenkins Deployment FAILED\\nJob: ${JOB_NAME}\\nBuild: #${BUILD_NUMBER}\\nCheck Jenkins console logs."
+        }' ${WEBHOOK_URL}
+      """
     }
   }
 }
