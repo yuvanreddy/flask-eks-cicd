@@ -12,9 +12,8 @@ pipeline {
     PATH               = "/usr/local/bin:/usr/bin:/bin"
     AWS_DEFAULT_REGION = "us-east-1"
 
+    // ✅ ADD YOUR WEBHOOK URL HERE (Slack / Teams / Discord etc.)
     WEBHOOK_URL        = "https://hooks.slack.com/services/XXXX/XXXX/XXXX"
-    INGRESS_NAME       = "flask-ingress"
-    NAMESPACE          = "default"
   }
 
   stages {
@@ -61,53 +60,56 @@ pipeline {
       }
     }
 
-    stage('Deploy to EKS') {
+    stage('Apply aws-auth RBAC') {
       steps {
         sh '''
-          # Render deployment yaml without modifying original
-          sed "s|IMAGE_TAG|${IMAGE_TAG}|g" k8s/deployment.yaml > k8s/deployment_rendered.yaml
-
-          kubectl apply -f k8s/deployment_rendered.yaml --validate=false
-          kubectl apply -f k8s/service.yaml --validate=false
-          kubectl apply -f k8s/ingress.yaml --validate=false
-
-          kubectl rollout status deployment/flask-app --timeout=180s
+          kubectl apply -f k8s/aws-auth.yaml --validate=false
         '''
       }
     }
 
-    stage('Verify + Print ALB URL') {
+    stage('Deploy to EKS') {
+      steps {
+        sh '''
+          sed -i "s|IMAGE_TAG|${IMAGE_TAG}|g" k8s/deployment.yaml
+          kubectl apply -f k8s/ --validate=false
+        '''
+      }
+    }
+
+    stage('Verify + Print URL') {
       steps {
         sh '''
           echo "=== PODS ==="
-          kubectl get pods -n ${NAMESPACE} -o wide
+          kubectl get pods -o wide
 
-          echo "=== INGRESS ==="
-          kubectl get ingress -n ${NAMESPACE}
+          echo "=== SERVICE ==="
+          kubectl get svc flask-service
 
-          echo "Waiting for ALB URL..."
+          echo "Waiting for LoadBalancer URL..."
           for i in {1..30}; do
-            URL=$(kubectl get ingress ${INGRESS_NAME} -n ${NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+            URL=$(kubectl get svc flask-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
             if [ ! -z "$URL" ]; then
               echo "✅ Flask App URL: http://$URL"
-              echo "$URL" > alb_url.txt
+              echo "$URL" > lb_url.txt
               exit 0
             fi
             sleep 10
           done
 
-          echo "❌ ALB URL not assigned yet. Check ingress:"
-          kubectl describe ingress ${INGRESS_NAME} -n ${NAMESPACE}
+          echo "❌ LoadBalancer URL not assigned yet. Check again after 2-3 mins:"
+          kubectl get svc flask-service
         '''
       }
     }
 
+    // ✅ NEW STAGE: WEBHOOK NOTIFICATION
     stage('Webhook Notify') {
       steps {
         script {
           def url = "Not Assigned"
-          if (fileExists('alb_url.txt')) {
-            url = sh(script: "cat alb_url.txt", returnStdout: true).trim()
+          if (fileExists('lb_url.txt')) {
+            url = sh(script: "cat lb_url.txt", returnStdout: true).trim()
           }
 
           sh """
@@ -121,6 +123,7 @@ pipeline {
     }
   }
 
+  // ✅ If build fails, it will send failure notification
   post {
     failure {
       sh """
