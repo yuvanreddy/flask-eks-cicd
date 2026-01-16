@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard</title>
+    <style>
+        body { font-family: Arial; background: #eaf2ff; padding: 40px; }
+        .box {
+            max-width: 700px;
+            margin: auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0px 0px 10px rgba(0,0,0,0.15);
+        }
+        a { display: inline-block; margin-top: 15px; text-decoration: none; padding: 10px; background: red; color: white; border-radius: 7px; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>Welcome, {{ user }} ✅</h1>
+        <h3>My Name is Yuvan Reddy Arepally</h3>
+        <p><b>Pod:</b> {{ pod }}</p>
+        <p><b>Version:</b> {{ version }}</p>
+        <a href="/logout">Logout</a>
+    </div>
+</body>
+</html>
